@@ -76,6 +76,27 @@
       71:"小雪",73:"中雪",75:"大雪",80:"零星小雨",81:"零星中雨",82:"零星大雨",
       95:"雷雨",96:"雷雨伴小冰雹",99:"雷雨伴大冰雹"};
 
+    async function fetchWeather(lat, lon) {
+      try {
+        const res = await fetch(weatherUrl(lat, lon));
+        const data = await res.json();
+        if (!data.current) throw new Error("無法取得天氣");
+        updatePanel(data, lat, lon);
+      } catch (e) {
+        locEl.textContent = "取得天氣失敗";
+        descEl.textContent = e.message;
+        console.error(e);
+      }
+    }
+
+    function updatePanel(d, lat, lon) {
+      const c = d.current;
+      locEl.textContent = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+      tempEl.textContent = `溫度：${Math.round(c.temperature_2m)}°C`;
+      humidEl.textContent = `濕度：${c.relative_humidity_2m}%`;
+      descEl.textContent = `天氣：${weatherMap[c.weathercode] ?? "未知"}`;
+    }
+
     const locEl = document.getElementById("loc");
     const tempEl = document.getElementById("temp");
     const humidEl = document.getElementById("humid");
@@ -140,26 +161,6 @@
       rainLayer.alpha = 0.8; cloudLayer.alpha = 0.8;
       cloudToggle.onchange = () => { cloudLayer.show = cloudToggle.checked; };
       rainToggle.onchange  = () => { rainLayer.show  = rainToggle.checked; };
-
-      async function fetchWeather(lat, lon) {
-        try {
-          const res = await fetch(weatherUrl(lat, lon));
-          const data = await res.json();
-          if (!data.current) throw new Error("無法取得天氣");
-          updatePanel(data, lat, lon);
-        } catch (e) {
-          locEl.textContent = "取得天氣失敗";
-          descEl.textContent = e.message;
-        }
-      }
-
-      function updatePanel(d, lat, lon) {
-        const c = d.current;
-        locEl.textContent = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
-        tempEl.textContent = `溫度：${Math.round(c.temperature_2m)}°C`;
-        humidEl.textContent = `濕度：${c.relative_humidity_2m}%`;
-        descEl.textContent = `天氣：${weatherMap[c.weathercode] ?? "未知"}`;
-      }
 
       function pickPosition(click) {
         const ellipsoid = viewer.scene.globe.ellipsoid;
