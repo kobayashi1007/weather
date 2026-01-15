@@ -77,14 +77,45 @@
       71:"小雪",73:"中雪",75:"大雪",80:"零星小雨",81:"零星中雨",82:"零星大雨",
       95:"雷雨",96:"雷雨伴小冰雹",99:"雷雨伴大冰雹"};
 
+    async function fetchPlaceName(lat, lon) {
+      // 先用 Open-Meteo geocoding（CORS 友善），失敗再用 Nominatim
+      const fromOpenMeteo = async () => {
+        const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=zh-TW&count=1`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const r = data?.results?.[0];
+        if (!r) return null;
+        // 組合名稱：城市 / admin / 國家
+        const parts = [r.name, r.admin1, r.country].filter(Boolean);
+        return parts.join(" · ");
+      };
+      const fromNominatim = async () => {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=jsonv2&accept-language=zh-TW`;
+        const res = await fetch(url, { headers: { "Accept-Language": "zh-TW" } });
+        const data = await res.json();
+        return data.display_name || data.name || null;
+      };
+      try {
+        const a = await fromOpenMeteo();
+        if (a) return a;
+      } catch (_) {}
+      try {
+        const b = await fromNominatim();
+        if (b) return b;
+      } catch (_) {}
+      return null;
+    }
+
     async function fetchWeather(lat, lon) {
       locEl.textContent = `${lat.toFixed(2)}, ${lon.toFixed(2)}（查詢中）`;
       descEl.textContent = "查詢中...";
       try {
+        const placePromise = fetchPlaceName(lat, lon);
         const res = await fetch(weatherUrl(lat, lon));
         const data = await res.json();
         if (!data.current) throw new Error("無法取得天氣");
-        updatePanel(data, lat, lon);
+        const placeName = await placePromise;
+        updatePanel(data, lat, lon, placeName);
       } catch (e) {
         locEl.textContent = "取得天氣失敗";
         descEl.textContent = e.message;
@@ -92,9 +123,10 @@
       }
     }
 
-    function updatePanel(d, lat, lon) {
+    function updatePanel(d, lat, lon, placeName) {
       const c = d.current;
-      locEl.textContent = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+      const name = placeName || `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+      locEl.textContent = name;
       tempEl.textContent = `溫度：${Math.round(c.temperature_2m)}°C`;
       humidEl.textContent = `濕度：${c.relative_humidity_2m}%`;
       descEl.textContent = `天氣：${weatherMap[c.weathercode] ?? "未知"}`;
