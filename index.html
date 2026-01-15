@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>天氣地球 - Open-Meteo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.115/Cesium.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.115/Widgets/widgets.css" />
+  <style>
+    html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    #panel {
+      position: absolute; top: 12px; left: 12px; padding: 12px;
+      background: rgba(0,0,0,0.6); color: #fff; font-family: sans-serif; border-radius: 8px;
+      min-width: 260px; backdrop-filter: blur(6px);
+    }
+    #panel h3 { margin: 0 0 6px 0; font-size: 16px; }
+    #panel .row { margin: 4px 0; }
+    #panel button { margin-top: 6px; }
+    #layerToggles { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="panel">
+    <h3 id="loc">讀取中...</h3>
+    <div class="row" id="temp">溫度：--</div>
+    <div class="row" id="humid">濕度：--</div>
+    <div class="row" id="desc">天氣：--</div>
+    <button id="locateBtn">使用我的位置</button>
+    <div id="layerToggles">
+      <label><input type="checkbox" id="cloudToggle" checked /> 雲層</label>
+      <label><input type="checkbox" id="rainToggle" checked /> 降雨</label>
+    </div>
+  </div>
+
+  <script>
+    const weatherUrl = (lat, lon) =>
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weathercode`;
+    const cloudTileUrl = "https://tile.open-meteo.com/map/clouds/{z}/{x}/{y}.png";
+    const rainTileUrl  = "https://tile.open-meteo.com/map/precipitation/{z}/{x}/{y}.png";
+
+    const locEl = document.getElementById("loc");
+    const tempEl = document.getElementById("temp");
+    const humidEl = document.getElementById("humid");
+    const descEl = document.getElementById("desc");
+    const locateBtn = document.getElementById("locateBtn");
+    const cloudToggle = document.getElementById("cloudToggle");
+    const rainToggle = document.getElementById("rainToggle");
+
+    const viewer = new Cesium.Viewer("cesiumContainer", {
+      timeline: false, animation: false, baseLayerPicker: true,
+      geocoder: false, homeButton: false, sceneModePicker: false,
+    });
+
+    const cloudLayer = viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({ url: cloudTileUrl, maximumLevel: 9, credit: "Open-Meteo clouds" })
+    );
+    const rainLayer = viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({ url: rainTileUrl, maximumLevel: 9, credit: "Open-Meteo precip" })
+    );
+    rainLayer.alpha = 0.8; cloudLayer.alpha = 0.8;
+    cloudToggle.onchange = () => { cloudLayer.show = cloudToggle.checked; };
+    rainToggle.onchange  = () => { rainLayer.show  = rainToggle.checked; };
+
+    const weatherMap = {0:"晴朗",1:"多雲",2:"半雲",3:"陰天",45:"霧",48:"濕霧",
+      51:"小毛毛雨",53:"中毛毛雨",55:"大毛毛雨",61:"小雨",63:"中雨",65:"大雨",
+      71:"小雪",73:"中雪",75:"大雪",80:"零星小雨",81:"零星中雨",82:"零星大雨",
+      95:"雷雨",96:"雷雨伴小冰雹",99:"雷雨伴大冰雹"};
+
+    async function fetchWeather(lat, lon) {
+      try {
+        const res = await fetch(weatherUrl(lat, lon));
+        const data = await res.json();
+        if (!data.current) throw new Error("無法取得天氣");
+        updatePanel(data, lat, lon);
+      } catch (e) {
+        locEl.textContent = "取得天氣失敗";
+        descEl.textContent = e.message;
+      }
+    }
+
+    function updatePanel(d, lat, lon) {
+      const c = d.current;
+      locEl.textContent = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+      tempEl.textContent = `溫度：${Math.round(c.temperature_2m)}°C`;
+      humidEl.textContent = `濕度：${c.relative_humidity_2m}%`;
+      descEl.textContent = `天氣：${weatherMap[c.weathercode] ?? "未知"}`;
+    }
+
+    function pickPosition(click) {
+      const ellipsoid = viewer.scene.globe.ellipsoid;
+      const cartesian = viewer.camera.pickEllipsoid(click.position || click.endPosition, ellipsoid);
+      if (!cartesian) return;
+      const cartographic = ellipsoid.cartesianToCartographic(cartesian);
+      const lat = Cesium.Math.toDegrees(cartographic.latitude);
+      const lon = Cesium.Math.toDegrees(cartographic.longitude);
+      fetchWeather(lat, lon);
+    }
+
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction(pickPosition, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    handler.setInputAction(pickPosition, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+    function canUseGeo() {
+      const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+      return location.protocol === "https:" || isLocalhost;
+    }
+
+    locateBtn.onclick = () => {
+      if (!navigator.geolocation) {
+        locEl.textContent = "瀏覽器不支援定位，請點擊地球選點";
+        return;
+      }
+      if (!canUseGeo()) {
+        locEl.textContent = "需在 HTTPS 或 localhost 才能定位，請點擊地球選點";
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        ({ coords:{ latitude, longitude } }) => {
+          viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 1500000) });
+          fetchWeather(latitude, longitude);
+        },
+        (err) => {
+          locEl.textContent = "定位失敗，請點擊地球選點";
+          descEl.textContent = err.message;
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    };
+
+    // 初始嘗試定位，不成功時提示點擊地球
+    locateBtn.click();
+  </script>
+</body>
+</html>
