@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>一周預報 - Open-Meteo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b1622; color: #eef2f5;
+      display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+    }
+    header {
+      width: 100%; max-width: 960px; padding: 16px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .card {
+      width: 100%; max-width: 960px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 16px; backdrop-filter: blur(8px); box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    }
+    h1 { margin: 0 0 8px 0; font-size: 20px; }
+    .muted { color: #b8c2cc; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
+    th { color: #b8c2cc; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    .nav {
+      display: flex; gap: 8px; align-items: center;
+    }
+    select, button {
+      background: rgba(255,255,255,0.08); color: #eef2f5; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px; padding: 8px 12px; font-size: 14px;
+    }
+    button { cursor: pointer; }
+    .error { color: #ffb4b4; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1 id="placeTitle">一周預報</h1>
+      <div class="muted" id="coords"></div>
+    </div>
+    <div class="nav">
+      <label for="navSelect">檢視：</label>
+      <select id="navSelect">
+        <option value="weekly" selected>一周預報</option>
+        <option value="map">即時地圖</option>
+      </select>
+      <button id="backBtn">回到地圖</button>
+    </div>
+  </header>
+
+  <div class="card">
+    <div id="status" class="muted">讀取中...</div>
+    <div id="error" class="error"></div>
+    <table id="forecastTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>天氣</th>
+          <th>最高 / 最低 (°C)</th>
+          <th>降水量 (mm)</th>
+        </tr>
+      </thead>
+      <tbody id="forecastBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const lat = parseFloat(params.get("lat"));
+    const lon = parseFloat(params.get("lon"));
+    const placeName = params.get("name") || "";
+
+    const placeTitle = document.getElementById("placeTitle");
+    const coordsEl = document.getElementById("coords");
+    const statusEl = document.getElementById("status");
+    const errorEl = document.getElementById("error");
+    const table = document.getElementById("forecastTable");
+    const tbody = document.getElementById("forecastBody");
+    const navSelect = document.getElementById("navSelect");
+    const backBtn = document.getElementById("backBtn");
+
+    const weatherMap = {0:"晴朗",1:"多雲",2:"半雲",3:"陰天",45:"霧",48:"濕霧",
+      51:"小毛毛雨",53:"中毛毛雨",55:"大毛毛雨",61:"小雨",63:"中雨",65:"大雨",
+      71:"小雪",73:"中雪",75:"大雪",80:"零星小雨",81:"零星中雨",82:"零星大雨",
+      95:"雷雨",96:"雷雨伴小冰雹",99:"雷雨伴大冰雹"};
+
+    function renderError(msg) {
+      errorEl.textContent = msg;
+      statusEl.textContent = "";
+      table.style.display = "none";
+    }
+
+    function goMap() {
+      window.location.href = "index.html";
+    }
+    backBtn.onclick = goMap;
+    navSelect.onchange = () => { if (navSelect.value === "map") goMap(); };
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      renderError("缺少座標，請從地圖頁選擇地點後再查看。");
+    } else {
+      placeTitle.textContent = placeName || "一周預報";
+      coordsEl.textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+      fetchWeekly(lat, lon);
+    }
+
+    async function fetchWeekly(lat, lon) {
+      try {
+        statusEl.textContent = "讀取一周預報中...";
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&timezone=auto&forecast_days=7`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.daily || !data.daily.time) throw new Error("無法取得預報");
+        renderTable(data.daily);
+      } catch (e) {
+        renderError(e.message);
+      }
+    }
+
+    function renderTable(daily) {
+      const rows = [];
+      for (let i = 0; i < daily.time.length; i++) {
+        const date = daily.time[i];
+        const code = daily.weathercode?.[i];
+        const tmax = daily.temperature_2m_max?.[i];
+        const tmin = daily.temperature_2m_min?.[i];
+        const rain = daily.precipitation_sum?.[i];
+        rows.push(`
+          <tr>
+            <td>${date}</td>
+            <td>${weatherMap[code] ?? "未知"}</td>
+            <td>${Math.round(tmax)} / ${Math.round(tmin)}</td>
+            <td>${(rain ?? 0).toFixed(1)}</td>
+          </tr>
+        `);
+      }
+      tbody.innerHTML = rows.join("");
+      statusEl.textContent = "";
+      errorEl.textContent = "";
+      table.style.display = "table";
+    }
+  </script>
+</body>
+</html>

@@ -56,6 +56,13 @@
     <div class="row" id="temp">溫度：--</div>
     <div class="row" id="humid">濕度：--</div>
     <div class="row" id="desc">天氣：--</div>
+    <div class="row">
+      <label for="viewSelect">檢視：</label>
+      <select id="viewSelect">
+        <option value="map" selected>即時地圖</option>
+        <option value="weekly">一周預報</option>
+      </select>
+    </div>
     <button id="locateBtn">使用我的位置</button>
     <div id="layerToggles">
       <label><input type="checkbox" id="cloudToggle" checked /> 雲層</label>
@@ -115,6 +122,7 @@
         const data = await res.json();
         if (!data.current) throw new Error("無法取得天氣");
         const placeName = await placePromise;
+        currentLoc = { lat, lon, name: placeName };
         updatePanel(data, lat, lon, placeName);
       } catch (e) {
         locEl.textContent = "取得天氣失敗";
@@ -132,6 +140,22 @@
       descEl.textContent = `天氣：${weatherMap[c.weathercode] ?? "未知"}`;
     }
 
+    viewSelect.onchange = () => {
+      if (viewSelect.value === "map") return;
+      if (!currentLoc) {
+        alert("請先在地圖上點選地點或使用定位，再查看一周預報");
+        viewSelect.value = "map";
+        return;
+      }
+      const { lat, lon, name } = currentLoc;
+      const params = new URLSearchParams({
+        lat: lat.toFixed(6),
+        lon: lon.toFixed(6),
+        name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`
+      });
+      window.location.href = `weekly.html?${params.toString()}`;
+    };
+
     const locEl = document.getElementById("loc");
     const tempEl = document.getElementById("temp");
     const humidEl = document.getElementById("humid");
@@ -139,7 +163,9 @@
     const locateBtn = document.getElementById("locateBtn");
     const cloudToggle = document.getElementById("cloudToggle");
     const rainToggle = document.getElementById("rainToggle");
+    const viewSelect = document.getElementById("viewSelect");
     let panToAndFetch = null; // 依目前載入的地圖（3D/2D）決定如何移動並取天氣
+    let currentLoc = null; // {lat, lon, name}
 
     // 等待 Cesium 載入（無論是 cdnjs 或 fallback），避免未定義錯誤
     function waitCesium(timeoutMs = 15000) {
