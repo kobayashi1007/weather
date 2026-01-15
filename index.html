@@ -46,6 +46,12 @@
     const cloudToggle = document.getElementById("cloudToggle");
     const rainToggle = document.getElementById("rainToggle");
 
+    // 檢查 WebGL，避免瀏覽器或硬體加速關閉導致空白
+    if (!Cesium.FeatureDetection.supportsWebGL()) {
+      locEl.textContent = "瀏覽器不支援 WebGL，請開啟硬體加速或換瀏覽器";
+      throw new Error("WebGL not supported");
+    }
+
     const viewer = new Cesium.Viewer("cesiumContainer", {
       // 使用 OSM 作為底圖，避免 Cesium Ion 金鑰需求導致空白
       imageryProvider: new Cesium.UrlTemplateImageryProvider({
@@ -58,8 +64,10 @@
       animation: false,
       geocoder: false,
       homeButton: false,
-      sceneModePicker: false
+      sceneModePicker: false,
+      requestRenderMode: true // 降低效能負擔
     });
+    viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
 
     const cloudLayer = viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({ url: cloudTileUrl, maximumLevel: 9, credit: "Open-Meteo clouds" })
