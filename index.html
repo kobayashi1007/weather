@@ -47,8 +47,18 @@
     const rainToggle = document.getElementById("rainToggle");
 
     const viewer = new Cesium.Viewer("cesiumContainer", {
-      timeline: false, animation: false, baseLayerPicker: true,
-      geocoder: false, homeButton: false, sceneModePicker: false,
+      // 使用 OSM 作為底圖，避免 Cesium Ion 金鑰需求導致空白
+      imageryProvider: new Cesium.UrlTemplateImageryProvider({
+        url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        credit: "© OpenStreetMap"
+      }),
+      terrainProvider: new Cesium.EllipsoidTerrainProvider(), // 不用 Ion terrain，減少阻塞
+      baseLayerPicker: false,
+      timeline: false,
+      animation: false,
+      geocoder: false,
+      homeButton: false,
+      sceneModePicker: false
     });
 
     const cloudLayer = viewer.imageryLayers.addImageryProvider(
