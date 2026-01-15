@@ -5,6 +5,30 @@
   <title>天氣地球 - Open-Meteo</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.115/Cesium.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.115/Widgets/widgets.css" />
+  <script>
+    // 若 cdnjs 被阻擋，改用 jsDelivr 後備
+    (function loadCesiumFallback() {
+      function loadJs(src, cb) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = cb;
+        s.onerror = function () { console.error('載入失敗', src); };
+        document.head.appendChild(s);
+      }
+      function loadCss(href) {
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = href;
+        document.head.appendChild(l);
+      }
+      if (!window.Cesium) {
+        loadCss('https://cdn.jsdelivr.net/npm/cesium@1.115/Build/Cesium/Widgets/widgets.css');
+        loadJs('https://cdn.jsdelivr.net/npm/cesium@1.115/Build/Cesium/Cesium.js', function () {
+          console.log('Cesium fallback loaded');
+        });
+      }
+    })();
+  </script>
   <style>
     html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
     #panel {
@@ -52,22 +76,30 @@
       throw new Error("WebGL not supported");
     }
 
-    const viewer = new Cesium.Viewer("cesiumContainer", {
-      // 使用 OSM 作為底圖，避免 Cesium Ion 金鑰需求導致空白
-      imageryProvider: new Cesium.UrlTemplateImageryProvider({
-        url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        credit: "© OpenStreetMap"
-      }),
-      terrainProvider: new Cesium.EllipsoidTerrainProvider(), // 不用 Ion terrain，減少阻塞
-      baseLayerPicker: false,
-      timeline: false,
-      animation: false,
-      geocoder: false,
-      homeButton: false,
-      sceneModePicker: false,
-      requestRenderMode: true // 降低效能負擔
-    });
-    viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
+    let viewer;
+    try {
+      viewer = new Cesium.Viewer("cesiumContainer", {
+        // 使用 OSM 作為底圖，避免 Cesium Ion 金鑰需求導致空白
+        imageryProvider: new Cesium.UrlTemplateImageryProvider({
+          url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+          credit: "© OpenStreetMap"
+        }),
+        terrainProvider: new Cesium.EllipsoidTerrainProvider(), // 不用 Ion terrain，減少阻塞
+        baseLayerPicker: false,
+        timeline: false,
+        animation: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: false,
+        requestRenderMode: true // 降低效能負擔
+      });
+      viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
+      locEl.textContent = "請點擊地球或使用定位";
+    } catch (err) {
+      console.error(err);
+      locEl.textContent = "Cesium 初始化失敗，請檢查 WebGL 或 CDN 載入";
+      throw err;
+    }
 
     const cloudLayer = viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({ url: cloudTileUrl, maximumLevel: 9, credit: "Open-Meteo clouds" })
