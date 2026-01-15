@@ -107,6 +107,7 @@
     const locateBtn = document.getElementById("locateBtn");
     const cloudToggle = document.getElementById("cloudToggle");
     const rainToggle = document.getElementById("rainToggle");
+    let panToAndFetch = null; // 依目前載入的地圖（3D/2D）決定如何移動並取天氣
 
     // 等待 Cesium 載入（無論是 cdnjs 或 fallback），避免未定義錯誤
     function waitCesium(timeoutMs = 15000) {
@@ -119,6 +120,37 @@
         })();
       });
     }
+
+    function canUseGeo() {
+      const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+      return location.protocol === "https:" || isLocalhost;
+    }
+
+    locateBtn.onclick = () => {
+      if (!navigator.geolocation) {
+        locEl.textContent = "瀏覽器不支援定位，請點擊地圖選點";
+        return;
+      }
+      if (!canUseGeo()) {
+        locEl.textContent = "需在 HTTPS 或 localhost 才能定位，請點擊地圖選點";
+        return;
+      }
+      locEl.textContent = "取得定位中...";
+      navigator.geolocation.getCurrentPosition(
+        ({ coords:{ latitude, longitude } }) => {
+          if (typeof panToAndFetch === "function") {
+            panToAndFetch(latitude, longitude);
+          } else {
+            fetchWeather(latitude, longitude);
+          }
+        },
+        (err) => {
+          locEl.textContent = "定位失敗，請點擊地圖選點";
+          descEl.textContent = err.message;
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    };
 
     function initCesium() {
       // 檢查 WebGL（安全守門，避免方法不存在）
@@ -165,6 +197,11 @@
       cloudToggle.onchange = () => { cloudLayer.show = cloudToggle.checked; };
       rainToggle.onchange  = () => { rainLayer.show  = rainToggle.checked; };
 
+      panToAndFetch = (lat, lon) => {
+        viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(lon, lat, 1500000) });
+        fetchWeather(lat, lon);
+      };
+
       function pickPosition(click) {
         const ellipsoid = viewer.scene.globe.ellipsoid;
         const cartesian = viewer.camera.pickEllipsoid(click.position || click.endPosition, ellipsoid);
@@ -178,33 +215,6 @@
       const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
       handler.setInputAction(pickPosition, Cesium.ScreenSpaceEventType.LEFT_CLICK);
       handler.setInputAction(pickPosition, Cesium.ScreenSpaceEventType.LEFT_UP);
-
-      function canUseGeo() {
-        const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
-        return location.protocol === "https:" || isLocalhost;
-      }
-
-      locateBtn.onclick = () => {
-        if (!navigator.geolocation) {
-          locEl.textContent = "瀏覽器不支援定位，請點擊地球選點";
-          return;
-        }
-        if (!canUseGeo()) {
-          locEl.textContent = "需在 HTTPS 或 localhost 才能定位，請點擊地球選點";
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(
-          ({ coords:{ latitude, longitude } }) => {
-            viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 1500000) });
-            fetchWeather(latitude, longitude);
-          },
-          (err) => {
-            locEl.textContent = "定位失敗，請點擊地球選點";
-            descEl.textContent = err.message;
-          },
-          { enableHighAccuracy: true, timeout: 8000 }
-        );
-      };
 
       // 初始提示並將相機移至全局
       viewer.camera.flyHome(0);
@@ -234,6 +244,11 @@
           maxZoom: 10,
           attribution: "© OpenStreetMap"
         }).addTo(map);
+
+        panToAndFetch = (lat, lon) => {
+          map.setView([lat, lon], 8);
+          fetchWeather(lat, lon);
+        };
 
         map.on("click", (e) => {
           const { lat, lng } = e.latlng;
